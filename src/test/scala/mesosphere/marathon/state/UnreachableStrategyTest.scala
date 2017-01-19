@@ -19,9 +19,9 @@ class UnreachableStrategyTest extends UnitTest with ResultMatchers {
       UnreachableStrategy.unreachableStrategyValidator(strategy) shouldBe aSuccess
     }
 
-    "fail with invalid time until inactive" in {
+    "allows 0 seconds for inactive" in {
       val strategy = UnreachableStrategy(inactiveAfter = 0.second)
-      UnreachableStrategy.unreachableStrategyValidator(strategy) should failWith("inactiveAfter" -> "got 0 seconds, expected 1 second or more")
+      UnreachableStrategy.unreachableStrategyValidator(strategy) shouldBe aSuccess
     }
 
     "fail when time until expunge is smaller" in {

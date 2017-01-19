@@ -13,6 +13,9 @@ case class UnreachableStrategy(
     inactiveAfter: FiniteDuration = UnreachableStrategy.DefaultEphemeralInactiveAfter,
     expungeAfter: FiniteDuration = UnreachableStrategy.DefaultEphemeralExpungeAfter) {
 
+  def inactiveAfterEnabled: Boolean =
+    inactiveAfter != Duration.Zero
+
   def toProto: Protos.UnreachableStrategy =
     Protos.UnreachableStrategy.newBuilder.
       setExpungeAfterSeconds(expungeAfter.toSeconds).
@@ -23,14 +26,14 @@ case class UnreachableStrategy(
 object UnreachableStrategy {
   val DefaultEphemeralInactiveAfter: FiniteDuration = 5.minutes
   val DefaultEphemeralExpungeAfter: FiniteDuration = 10.minutes
-  val DefaultResidentInactiveAfter: FiniteDuration = 1.hour
+  val DefaultResidentInactiveAfter: FiniteDuration = Duration.Zero
   val DefaultResidentExpungeAfter: FiniteDuration = 7.days
 
   val defaultEphemeral = UnreachableStrategy(DefaultEphemeralInactiveAfter, DefaultEphemeralExpungeAfter)
   val defaultResident = UnreachableStrategy(DefaultResidentInactiveAfter, DefaultResidentExpungeAfter)
 
   implicit val unreachableStrategyValidator = validator[UnreachableStrategy] { strategy =>
-    strategy.inactiveAfter should be >= 1.second
+    strategy.inactiveAfter should be >= Duration.Zero
     strategy.inactiveAfter should be < strategy.expungeAfter
   }
 

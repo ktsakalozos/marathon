@@ -33,15 +33,12 @@ trait ExpungeOverdueLostTasksActorLogic {
   }
 
   /**
-    * @return instances that have been UnreachableInactive according to the RunSpec definition.
+    * @return instances that should be expunged according to the RunSpec definition.
     */
-  def filterOverdueUnreachableInactive(instances: Map[PathId, SpecInstances], now: Timestamp) =
-    instances.values.flatMap(_.instances)
-      .withFilter(_.isUnreachableInactive)
-      .withFilter { instance =>
-        val unreachableExpungeAfter = instance.unreachableStrategy.expungeAfter
-        instance.tasksMap.valuesIterator.exists(_.isUnreachableExpired(now, unreachableExpungeAfter))
-      }
+  def filterUnreachableForExpunge(instances: Map[PathId, SpecInstances], now: Timestamp) =
+    instances.values.
+      flatMap(_.instances).
+      withFilter { _.shouldExpunge(now) }
 }
 
 class ExpungeOverdueLostTasksActor(
@@ -70,7 +67,7 @@ class ExpungeOverdueLostTasksActor(
   override def receive: Receive = {
     case Tick => instanceTracker.instancesBySpec() pipeTo self
     case InstanceTracker.InstancesBySpec(instances) =>
-      filterOverdueUnreachableInactive(instances, clock.now()).foreach(triggerExpunge)
+      filterUnreachableForExpunge(instances, clock.now()).foreach(triggerExpunge)
   }
 }
 

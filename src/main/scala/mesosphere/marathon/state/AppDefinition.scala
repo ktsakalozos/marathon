@@ -614,6 +614,10 @@ object AppDefinition extends GeneralPurposeCombinators {
         appDef.healthChecks.count(_.isInstanceOf[MesosCommandHealthCheck])) <= 1
     }
 
+  private[state] val requireNoUnreachableInactiveAfterForResidentTasks = isTrue[AppDefinition]("unreachableStrategy inactiveAfter must be disabled for resident tasks") { app =>
+    (!app.isResident) || app.unreachableStrategy.inactiveAfter == Duration.Zero
+  }
+
   private def validBasicAppDefinition(enabledFeatures: Set[String]) = validator[AppDefinition] { appDef =>
     appDef.upgradeStrategy is valid
     appDef.container.each is valid(Container.validContainer(enabledFeatures))
@@ -640,6 +644,7 @@ object AppDefinition extends GeneralPurposeCombinators {
     appDef must complyWithResidencyRules
     appDef must complyWithSingleInstanceLabelRules
     appDef must complyWithUpgradeStrategyRules
+    appDef should requireNoUnreachableInactiveAfterForResidentTasks
     appDef.constraints.each must complyWithConstraintRules
     appDef.ipAddress must optional(complyWithIpAddressRules(appDef))
     appDef.unreachableStrategy is valid

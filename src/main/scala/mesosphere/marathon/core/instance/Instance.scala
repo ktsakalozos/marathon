@@ -49,6 +49,17 @@ case class Instance(
   def isTerminated: Boolean = state.condition.isTerminal
   def isActive: Boolean = state.condition.isActive
 
+  def shouldExpunge(now: Timestamp): Boolean = {
+    val unreachableExpungeAfter = unreachableStrategy.expungeAfter
+    def expungeTimePassed = tasksMap.valuesIterator.exists(_.isUnreachableExpired(now, unreachableExpungeAfter))
+    // if inactiveAfter is enabled, then we wait until the instance transitions to UnreachableInactive
+    if (unreachableStrategy.inactiveAfterEnabled) {
+      isUnreachableInactive && expungeTimePassed
+    } else {
+      expungeTimePassed
+    }
+  }
+
   override def mergeFromProto(message: Protos.Json): Instance = {
     Json.parse(message.getJson).as[Instance]
   }
@@ -133,12 +144,12 @@ object Instance {
       maybeOldState: Option[InstanceState],
       newTaskMap: Map[Task.Id, Task],
       now: Timestamp,
-      unreachableInactiveAfter: FiniteDuration = 5.minutes): InstanceState = {
+      unreachableStrategy: UnreachableStrategy = UnreachableStrategy.defaultEphemeral): InstanceState = {
 
       val tasks = newTaskMap.values
 
       // compute the new instance condition
-      val condition = conditionFromTasks(tasks, now, unreachableInactiveAfter)
+      val condition = conditionFromTasks(tasks, now, unreachableStrategy)
 
       val active: Option[Timestamp] = activeSince(tasks)
 
@@ -152,14 +163,16 @@ object Instance {
     /**
       * @return condition for instance with tasks.
       */
-    def conditionFromTasks(tasks: Iterable[Task], now: Timestamp, unreachableInactiveAfter: FiniteDuration): Condition = {
+    def conditionFromTasks(tasks: Iterable[Task], now: Timestamp, unreachableStrategy: UnreachableStrategy): Condition = {
       if (tasks.isEmpty) {
         Condition.Unknown
       } else {
         // The smallest Condition according to conditionOrdering is the condition for the whole instance.
         tasks.view.map(_.status.condition).minBy(conditionHierarchy) match {
-          case Condition.Unreachable if shouldBecomeInactive(tasks, now, unreachableInactiveAfter) => Condition.UnreachableInactive
-          case condition => condition
+          case Condition.Unreachable if shouldBecomeInactive(tasks, now, unreachableStrategy) =>
+            Condition.UnreachableInactive
+          case condition =>
+            condition
         }
       }
     }
@@ -177,8 +190,9 @@ object Instance {
     /**
       * @return if one of tasks has been UnreachableInactive for more than unreachableInactiveAfter.
       */
-    def shouldBecomeInactive(tasks: Iterable[Task], now: Timestamp, unreachableInactiveAfter: FiniteDuration): Boolean = {
-      tasks.exists(_.isUnreachableExpired(now, unreachableInactiveAfter))
+    def shouldBecomeInactive(tasks: Iterable[Task], now: Timestamp, unreachableStrategy: UnreachableStrategy): Boolean = {
+      (unreachableStrategy.inactiveAfterEnabled) &&
+        tasks.exists(_.isUnreachableExpired(now, unreachableStrategy.inactiveAfter))
     }
   }
 
@@ -373,7 +387,7 @@ object LegacyAppInstance {
   def apply(task: Task, agentInfo: AgentInfo, unreachableStrategy: UnreachableStrategy = UnreachableStrategy.defaultEphemeral): Instance = {
     val since = task.status.startedAt.getOrElse(task.status.stagedAt)
     val tasksMap = Map(task.taskId -> task)
-    val state = Instance.InstanceState(None, tasksMap, since)
+    val state = Instance.InstanceState(None, tasksMap, since, unreachableStrategy)
 
     new Instance(task.taskId.instanceId, agentInfo, state, tasksMap, task.runSpecVersion, unreachableStrategy)
   }
